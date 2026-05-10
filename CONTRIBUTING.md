@@ -97,8 +97,8 @@ docker compose up -d
 # .NET CLI (port 5100)
 curl http://localhost:5100/health
 
-# Docker (port 8201)
-curl http://localhost:8201/health
+# Docker (port 8082)
+curl http://localhost:8082/health
 ```
 
 ---

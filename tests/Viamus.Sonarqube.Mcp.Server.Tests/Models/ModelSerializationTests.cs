@@ -205,6 +205,72 @@ public class ModelSerializationTests
     }
 
     [Fact]
+    public void ComponentTreeMeasuresResponse_ShouldDeserialize()
+    {
+        var json = """
+        {
+            "paging": { "pageIndex": 1, "pageSize": 50, "total": 1 },
+            "baseComponent": { "key": "my-project", "name": "My Project", "qualifier": "TRK" },
+            "components": [
+                {
+                    "key": "my-project:src/A.tsx",
+                    "name": "A.tsx",
+                    "qualifier": "FIL",
+                    "path": "src/A.tsx",
+                    "language": "ts",
+                    "measures": [
+                        { "metric": "new_duplicated_lines", "period": { "value": "14" } },
+                        { "metric": "new_uncovered_lines", "period": { "value": "0" } }
+                    ]
+                }
+            ]
+        }
+        """;
+
+        var result = JsonSerializer.Deserialize<ComponentTreeMeasuresResponse>(json);
+
+        result.Should().NotBeNull();
+        result!.Paging.Total.Should().Be(1);
+        result.BaseComponent!.Key.Should().Be("my-project");
+        result.Components.Should().HaveCount(1);
+        result.Components[0].Path.Should().Be("src/A.tsx");
+        result.Components[0].Measures.Should().HaveCount(2);
+        result.Components[0].Measures![0].Period!.Value.Should().Be("14");
+    }
+
+    [Fact]
+    public void DuplicationsShowResponse_ShouldDeserialize()
+    {
+        var json = """
+        {
+            "duplications": [
+                {
+                    "blocks": [
+                        { "from": 42, "size": 8, "_ref": "1" },
+                        { "from": 17, "size": 8, "_ref": "2" }
+                    ]
+                }
+            ],
+            "files": {
+                "1": { "key": "my-project:src/A.tsx", "name": "A.tsx", "project": "my-project", "projectName": "My Project" },
+                "2": { "key": "my-project:src/B.tsx", "name": "B.tsx", "project": "my-project", "projectName": "My Project" }
+            }
+        }
+        """;
+
+        var result = JsonSerializer.Deserialize<DuplicationsShowResponse>(json);
+
+        result.Should().NotBeNull();
+        result!.Duplications.Should().HaveCount(1);
+        result.Duplications[0].Blocks.Should().HaveCount(2);
+        result.Duplications[0].Blocks[0].From.Should().Be(42);
+        result.Duplications[0].Blocks[0].Size.Should().Be(8);
+        result.Duplications[0].Blocks[0].Ref.Should().Be("1");
+        result.Files.Should().NotBeNull();
+        result.Files!["2"].Name.Should().Be("B.tsx");
+    }
+
+    [Fact]
     public void RuleSearchResponse_ShouldDeserialize()
     {
         var json = """

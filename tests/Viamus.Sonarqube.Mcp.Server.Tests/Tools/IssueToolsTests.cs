@@ -26,7 +26,8 @@ public class IssueToolsTests
             null, null);
 
         _client.SearchIssuesAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<int?>(), Arg.Any<int?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<int?>(), Arg.Any<int?>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .Returns(response);
 
         var result = await _tools.search_issues("my-project");
@@ -38,10 +39,28 @@ public class IssueToolsTests
     }
 
     [Fact]
+    public async Task SearchIssues_WithPullRequest_ShouldForwardPullRequestToClient()
+    {
+        var response = new IssueSearchResponse(new Paging(1, 100, 0), [], null, null);
+
+        _client.SearchIssuesAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
+                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<int?>(), Arg.Any<int?>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
+            .Returns(response);
+
+        await _tools.search_issues("my-project", pullRequest: "42");
+
+        await _client.Received(1).SearchIssuesAsync(
+            "my-project", null, null, null, null, null, null,
+            "42", Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task SearchIssues_WhenClientThrows_ShouldPropagateException()
     {
         _client.SearchIssuesAsync(Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<string?>(),
-                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<int?>(), Arg.Any<int?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<int?>(), Arg.Any<int?>(),
+                Arg.Any<string?>(), Arg.Any<CancellationToken>())
             .ThrowsAsync(new HttpRequestException("Connection failed"));
 
         var act = () => _tools.search_issues("my-project");

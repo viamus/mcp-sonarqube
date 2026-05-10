@@ -3,8 +3,17 @@
 [![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
+[![Tools](https://img.shields.io/badge/Tools-13-orange)](#available-tools)
+[![Tests](https://img.shields.io/badge/Tests-52%20passing-success)](#development)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for SonarQube integration, enabling AI assistants to interact with SonarQube Projects, Issues, Quality Gates, Measures, Security Hotspots, Rules, and System Health.
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that lets AI assistants talk to SonarQube — query projects, drill into issues, audit pull requests, locate duplication, and check quality gates — all through a single HTTP transport.
+
+### Highlights
+
+- **PR analysis in one call** — `analyze_pull_request` aggregates quality gate, new-code measures, issues, and security hotspots in parallel
+- **Locate the offending file** — `get_component_tree_measures` breaks aggregated metrics down by file/directory so the agent knows where to fix
+- **Exact duplication blocks** — `get_duplications` returns line ranges and paired files
+- **Clear errors** — Sonar's error body (`errors[].msg`) is propagated through every wrapper
 
 ---
 
@@ -41,49 +50,24 @@ docker compose up -d
 
 ## Available Tools
 
-### Project Tools
+13 MCP tools, grouped by domain:
 
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `search_projects` | Search for SonarQube projects by name or key | `/api/projects/search` |
-| `get_project_status` | Get quality gate status and key measures for a project | `/api/qualitygates/project_status` + `/api/measures/component` |
+| Domain | Tool | Purpose |
+|--------|------|---------|
+| **Pull Requests** | `analyze_pull_request` | Aggregated PR view — quality gate, new-code measures, issues, security hotspots (4 calls in parallel) |
+| **Projects** | `search_projects` | Search projects by name or key |
+| | `get_project_status` | Quality gate status + key measures for a project |
+| **Issues** | `search_issues` | Search issues with filters; supports `pullRequest` scoping |
+| **Measures** | `get_measures` | Get metrics for a component |
+| | `get_component_tree_measures` | Break measures down by file/directory — locate offending files |
+| **Duplications** | `get_duplications` | Exact duplication blocks (line ranges + paired files) |
+| **Quality Gates** | `list_quality_gates` | List all gates with their conditions |
+| **Hotspots** | `search_hotspots` | Search security hotspots |
+| | `get_hotspot` | Detailed hotspot info |
+| **Rules** | `search_rules` | Search coding rules by language/severity/tags |
+| **System** | `get_health` | Health status of the SonarQube instance |
 
-### Issue Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `search_issues` | Search for issues (bugs, vulnerabilities, code smells) with filters | `/api/issues/search` |
-
-### Measure Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `get_measures` | Get metrics for a component (coverage, bugs, vulnerabilities, etc.) | `/api/measures/component` |
-
-### Quality Gate Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `list_quality_gates` | List all available quality gates with conditions | `/api/qualitygates/list` |
-
-### Hotspot Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `search_hotspots` | Search for security hotspots in a project | `/api/hotspots/search` |
-| `get_hotspot` | Get detailed information about a specific hotspot | `/api/hotspots/show` |
-
-### System Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `get_health` | Get the health status of the SonarQube instance | `/api/system/health` |
-
-### Rule Tools
-
-| Tool | Description | SonarQube API |
-|------|-------------|---------------|
-| `search_rules` | Search for coding rules by language, severity, or tags | `/api/rules/search` |
+For the underlying SonarQube endpoints each tool wraps, see the [API Reference](#api-reference) below.
 
 ---
 
@@ -95,7 +79,7 @@ docker compose up -d
 docker compose up -d
 ```
 
-The server will be available at `http://localhost:8201`.
+The server will be available at `http://localhost:8082`.
 
 ### Option 2: .NET CLI
 
@@ -124,7 +108,7 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 {
   "mcpServers": {
     "sonarqube": {
-      "url": "http://localhost:8201/sse"
+      "url": "http://localhost:8082"
     }
   }
 }
@@ -133,12 +117,22 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 ### Claude Code
 
 ```bash
-claude mcp add sonarqube --transport sse http://localhost:8201/sse
+claude mcp add sonarqube --scope user --transport http http://localhost:8082
 ```
 
 ---
 
 ## Usage Examples
+
+### Audit a pull request end-to-end
+
+```
+Analyze pull request 1234 on the "my-app" project. Did it break the gate?
+If yes, find which files concentrate the new duplicated lines and show me
+the exact duplication blocks.
+```
+
+> Under the hood the agent will typically chain `analyze_pull_request` → `get_component_tree_measures` (sorted by `new_duplicated_lines`) → `get_duplications` on the worst file.
 
 ### Search for projects
 
@@ -220,7 +214,7 @@ dotnet user-secrets set "SonarQube:Token" "your-token-here"
 
 **Connection refused**
 - Verify the SonarQube base URL is correct and accessible
-- Check that the server is running: `curl http://localhost:8201/health`
+- Check that the server is running: `curl http://localhost:8082/health`
 
 **401 Unauthorized from SonarQube**
 - Verify your token is valid and not expired
@@ -245,7 +239,7 @@ mcp-sonarqube/
 │   ├── Middleware/              # API key authentication
 │   ├── Models/                  # SonarQube API DTOs
 │   ├── Services/                # HTTP client for SonarQube API
-│   ├── Tools/                   # MCP tool implementations (10 tools)
+│   ├── Tools/                   # MCP tool implementations (13 tools)
 │   └── Program.cs               # Entry point
 ├── tests/Viamus.Sonarqube.Mcp.Server.Tests/
 │   ├── Configuration/           # Settings and middleware tests
@@ -261,17 +255,19 @@ mcp-sonarqube/
 
 ### SonarQube API Endpoints Used
 
-| Endpoint | Tool |
-|----------|------|
+| Endpoint | Tool(s) |
+|----------|---------|
 | `/api/projects/search` | `search_projects` |
-| `/api/qualitygates/project_status` | `get_project_status` |
-| `/api/measures/component` | `get_project_status`, `get_measures` |
-| `/api/issues/search` | `search_issues` |
+| `/api/qualitygates/project_status` | `get_project_status`, `analyze_pull_request` |
 | `/api/qualitygates/list` | `list_quality_gates` |
-| `/api/hotspots/search` | `search_hotspots` |
+| `/api/measures/component` | `get_project_status`, `get_measures`, `analyze_pull_request` |
+| `/api/measures/component_tree` | `get_component_tree_measures` |
+| `/api/duplications/show` | `get_duplications` |
+| `/api/issues/search` | `search_issues`, `analyze_pull_request` |
+| `/api/hotspots/search` | `search_hotspots`, `analyze_pull_request` |
 | `/api/hotspots/show` | `get_hotspot` |
-| `/api/system/health` | `get_health` |
 | `/api/rules/search` | `search_rules` |
+| `/api/system/health` | `get_health` |
 
 ---
 

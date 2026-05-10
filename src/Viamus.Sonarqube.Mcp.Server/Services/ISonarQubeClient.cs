@@ -10,6 +10,7 @@ public interface ISonarQubeClient
     Task<IssueSearchResponse> SearchIssuesAsync(
         string? projectKey = null, string? severities = null, string? statuses = null,
         string? types = null, string? tags = null, int? page = null, int? pageSize = null,
+        string? pullRequest = null,
         CancellationToken cancellationToken = default);
 
     Task<QualityGateProjectStatusResponse> GetQualityGateProjectStatusAsync(
@@ -17,6 +18,17 @@ public interface ISonarQubeClient
 
     Task<MeasureComponentResponse> GetMeasuresAsync(
         string component, string metricKeys, CancellationToken cancellationToken = default);
+
+    Task<ComponentTreeMeasuresResponse> GetComponentTreeMeasuresAsync(
+        string component, string metricKeys,
+        string? pullRequest = null, string? qualifiers = null,
+        string? sort = null, bool? asc = null,
+        int? page = null, int? pageSize = null,
+        CancellationToken cancellationToken = default);
+
+    Task<DuplicationsShowResponse> GetDuplicationsAsync(
+        string fileKey, string? pullRequest = null,
+        CancellationToken cancellationToken = default);
 
     Task<HotspotSearchResponse> SearchHotspotsAsync(
         string projectKey, string? status = null, int? page = null, int? pageSize = null,
@@ -32,5 +44,9 @@ public interface ISonarQubeClient
     Task<RuleSearchResponse> SearchRulesAsync(
         string? languages = null, string? severities = null, string? tags = null,
         string? query = null, int? page = null, int? pageSize = null,
+        CancellationToken cancellationToken = default);
+
+    Task<PullRequestAnalysisResponse> GetPullRequestAnalysisAsync(
+        string projectKey, string pullRequest, string? metricKeys = null,
         CancellationToken cancellationToken = default);
 }

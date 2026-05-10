@@ -15,13 +15,14 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
 
         var url = BuildUrl("/api/projects/search", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<ProjectSearchResponse>(cancellationToken))!;
     }
 
     public async Task<IssueSearchResponse> SearchIssuesAsync(
         string? projectKey, string? severities, string? statuses,
         string? types, string? tags, int? page, int? pageSize,
+        string? pullRequest,
         CancellationToken cancellationToken)
     {
         var parameters = new List<string>();
@@ -30,12 +31,13 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
         if (!string.IsNullOrWhiteSpace(statuses)) parameters.Add($"statuses={Uri.EscapeDataString(statuses)}");
         if (!string.IsNullOrWhiteSpace(types)) parameters.Add($"types={Uri.EscapeDataString(types)}");
         if (!string.IsNullOrWhiteSpace(tags)) parameters.Add($"tags={Uri.EscapeDataString(tags)}");
+        if (!string.IsNullOrWhiteSpace(pullRequest)) parameters.Add($"pullRequest={Uri.EscapeDataString(pullRequest)}");
         if (page.HasValue) parameters.Add($"p={page.Value}");
         if (pageSize.HasValue) parameters.Add($"ps={pageSize.Value}");
 
         var url = BuildUrl("/api/issues/search", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<IssueSearchResponse>(cancellationToken))!;
     }
 
@@ -44,7 +46,7 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
     {
         var url = BuildUrl("/api/qualitygates/project_status", [$"projectKey={Uri.EscapeDataString(projectKey)}"]);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<QualityGateProjectStatusResponse>(cancellationToken))!;
     }
 
@@ -59,8 +61,66 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
 
         var url = BuildUrl("/api/measures/component", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<MeasureComponentResponse>(cancellationToken))!;
+    }
+
+    public async Task<ComponentTreeMeasuresResponse> GetComponentTreeMeasuresAsync(
+        string component, string metricKeys,
+        string? pullRequest, string? qualifiers,
+        string? sort, bool? asc,
+        int? page, int? pageSize,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(sort))
+        {
+            var requested = metricKeys
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (!requested.Contains(sort, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Sort metric '{sort}' must be included in metricKeys ('{metricKeys}').",
+                    nameof(sort));
+            }
+        }
+
+        var parameters = new List<string>
+        {
+            $"component={Uri.EscapeDataString(component)}",
+            $"metricKeys={Uri.EscapeDataString(metricKeys)}"
+        };
+        if (!string.IsNullOrWhiteSpace(pullRequest)) parameters.Add($"pullRequest={Uri.EscapeDataString(pullRequest)}");
+        if (!string.IsNullOrWhiteSpace(qualifiers)) parameters.Add($"qualifiers={Uri.EscapeDataString(qualifiers)}");
+        if (!string.IsNullOrWhiteSpace(sort))
+        {
+            // Sonar's `s` only accepts metric|metricPeriod|name|path|qualifier — to sort by a
+            // specific metric, set s=metric (or metricPeriod for new-code) and pass the key via metricSort.
+            var isNewCodeMetric = sort.StartsWith("new_", StringComparison.OrdinalIgnoreCase);
+            parameters.Add($"s={(isNewCodeMetric ? "metricPeriod" : "metric")}");
+            parameters.Add($"metricSort={Uri.EscapeDataString(sort)}");
+            if (isNewCodeMetric) parameters.Add("metricPeriodSort=1");
+            parameters.Add($"asc={(asc ?? false).ToString().ToLowerInvariant()}");
+        }
+        if (page.HasValue) parameters.Add($"p={page.Value}");
+        if (pageSize.HasValue) parameters.Add($"ps={pageSize.Value}");
+
+        var url = BuildUrl("/api/measures/component_tree", parameters);
+        var response = await httpClient.GetAsync(url, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<ComponentTreeMeasuresResponse>(cancellationToken))!;
+    }
+
+    public async Task<DuplicationsShowResponse> GetDuplicationsAsync(
+        string fileKey, string? pullRequest,
+        CancellationToken cancellationToken)
+    {
+        var parameters = new List<string> { $"key={Uri.EscapeDataString(fileKey)}" };
+        if (!string.IsNullOrWhiteSpace(pullRequest)) parameters.Add($"pullRequest={Uri.EscapeDataString(pullRequest)}");
+
+        var url = BuildUrl("/api/duplications/show", parameters);
+        var response = await httpClient.GetAsync(url, cancellationToken);
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
+        return (await response.Content.ReadFromJsonAsync<DuplicationsShowResponse>(cancellationToken))!;
     }
 
     public async Task<HotspotSearchResponse> SearchHotspotsAsync(
@@ -74,7 +134,7 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
 
         var url = BuildUrl("/api/hotspots/search", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<HotspotSearchResponse>(cancellationToken))!;
     }
 
@@ -83,21 +143,21 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
     {
         var url = BuildUrl("/api/hotspots/show", [$"hotspot={Uri.EscapeDataString(hotspotKey)}"]);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<HotspotDetailResponse>(cancellationToken))!;
     }
 
     public async Task<QualityGateListResponse> ListQualityGatesAsync(CancellationToken cancellationToken)
     {
         var response = await httpClient.GetAsync("/api/qualitygates/list", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<QualityGateListResponse>(cancellationToken))!;
     }
 
     public async Task<SystemHealthResponse> GetSystemHealthAsync(CancellationToken cancellationToken)
     {
         var response = await httpClient.GetAsync("/api/system/health", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<SystemHealthResponse>(cancellationToken))!;
     }
 
@@ -116,12 +176,81 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
 
         var url = BuildUrl("/api/rules/search", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<RuleSearchResponse>(cancellationToken))!;
+    }
+
+    public async Task<PullRequestAnalysisResponse> GetPullRequestAnalysisAsync(
+        string projectKey, string pullRequest, string? metricKeys,
+        CancellationToken cancellationToken)
+    {
+        var encodedKey = Uri.EscapeDataString(projectKey);
+        var encodedPr = Uri.EscapeDataString(pullRequest);
+        var metrics = string.IsNullOrWhiteSpace(metricKeys)
+            ? "new_coverage,new_duplicated_lines_density,new_duplicated_lines,new_duplicated_blocks,new_bugs,new_vulnerabilities,new_code_smells,new_security_hotspots,new_lines,new_lines_to_cover,new_violations"
+            : metricKeys;
+
+        var qualityGateUrl = $"/api/qualitygates/project_status?projectKey={encodedKey}&pullRequest={encodedPr}";
+        var measuresUrl = $"/api/measures/component?component={encodedKey}&pullRequest={encodedPr}&metricKeys={Uri.EscapeDataString(metrics)}";
+        var issuesUrl = $"/api/issues/search?projects={encodedKey}&pullRequest={encodedPr}&ps=500";
+        var hotspotsUrl = $"/api/hotspots/search?projectKey={encodedKey}&pullRequest={encodedPr}&ps=500";
+
+        var qualityGateTask = httpClient.GetAsync(qualityGateUrl, cancellationToken);
+        var measuresTask = httpClient.GetAsync(measuresUrl, cancellationToken);
+        var issuesTask = httpClient.GetAsync(issuesUrl, cancellationToken);
+        var hotspotsTask = httpClient.GetAsync(hotspotsUrl, cancellationToken);
+
+        await Task.WhenAll(qualityGateTask, measuresTask, issuesTask, hotspotsTask);
+
+        var qualityGateResponse = qualityGateTask.Result;
+        var measuresResponse = measuresTask.Result;
+        var issuesResponse = issuesTask.Result;
+        var hotspotsResponse = hotspotsTask.Result;
+
+        await EnsureSuccessOrThrowAsync(qualityGateResponse, cancellationToken);
+        await EnsureSuccessOrThrowAsync(issuesResponse, cancellationToken);
+        await EnsureSuccessOrThrowAsync(hotspotsResponse, cancellationToken);
+
+        var qualityGate = (await qualityGateResponse.Content.ReadFromJsonAsync<QualityGateProjectStatusResponse>(cancellationToken))!;
+        var issues = (await issuesResponse.Content.ReadFromJsonAsync<IssueSearchResponse>(cancellationToken))!;
+        var hotspots = (await hotspotsResponse.Content.ReadFromJsonAsync<HotspotSearchResponse>(cancellationToken))!;
+
+        MeasureComponent? measures = null;
+        if (measuresResponse.IsSuccessStatusCode)
+        {
+            var measuresPayload = await measuresResponse.Content.ReadFromJsonAsync<MeasureComponentResponse>(cancellationToken);
+            measures = measuresPayload?.Component;
+        }
+
+        return new PullRequestAnalysisResponse(
+            projectKey,
+            pullRequest,
+            qualityGate.ProjectStatus,
+            measures,
+            issues,
+            hotspots);
     }
 
     private static string BuildUrl(string path, List<string> parameters)
     {
         return parameters.Count > 0 ? $"{path}?{string.Join("&", parameters)}" : path;
+    }
+
+    private static async Task EnsureSuccessOrThrowAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        if (response.IsSuccessStatusCode) return;
+
+        string? body = null;
+        try { body = await response.Content.ReadAsStringAsync(cancellationToken); }
+        catch { /* body unavailable; fall through */ }
+
+        var snippet = string.IsNullOrWhiteSpace(body)
+            ? string.Empty
+            : $" Body: {(body!.Length > 1000 ? body[..1000] + "…" : body)}";
+
+        throw new HttpRequestException(
+            $"SonarQube request to {response.RequestMessage?.RequestUri} failed: {(int)response.StatusCode} {response.ReasonPhrase}.{snippet}",
+            inner: null,
+            statusCode: response.StatusCode);
     }
 }
