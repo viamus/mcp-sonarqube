@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using Microsoft.Extensions.Options;
+using Viamus.Sonarqube.Mcp.Server.Configuration;
 using Viamus.Sonarqube.Mcp.Server.Services;
 
 namespace Viamus.Sonarqube.Mcp.Server.Tests.Services;
@@ -9,6 +11,11 @@ public class SonarQubeClientTests
 {
     private static SonarQubeClient ClientWith(RecordingHandler handler) =>
         new(new HttpClient(handler) { BaseAddress = new Uri("https://sonar.example") });
+
+    private static SonarQubeClient ClientWith(RecordingHandler handler, string organization) =>
+        new(
+            new HttpClient(handler) { BaseAddress = new Uri("https://sonar.example") },
+            Options.Create(new SonarQubeSettings { Organization = organization }));
 
     [Fact]
     public async Task GetComponentTreeMeasures_WhenSortNotInMetricKeys_ShouldThrowArgumentException()
@@ -104,6 +111,21 @@ public class SonarQubeClientTests
         handler.LastRequestUri.Should().NotBeNull();
         handler.LastRequestUri!.Query.Should().Contain("pullRequest=42");
         handler.LastRequestUri.Query.Should().Contain("projects=my-project");
+    }
+
+    [Fact]
+    public async Task SearchProjects_WithOrganizationSetting_ShouldIncludeOrganizationQueryParam()
+    {
+        var handler = new RecordingHandler("""
+            { "paging": { "pageIndex": 1, "pageSize": 100, "total": 0 }, "components": [] }
+            """);
+        var client = ClientWith(handler, "my-org");
+
+        await client.SearchProjectsAsync("my-project", null, null, CancellationToken.None);
+
+        handler.LastRequestUri.Should().NotBeNull();
+        handler.LastRequestUri!.Query.Should().Contain("q=my-project");
+        handler.LastRequestUri.Query.Should().Contain("organization=my-org");
     }
 
     [Fact]

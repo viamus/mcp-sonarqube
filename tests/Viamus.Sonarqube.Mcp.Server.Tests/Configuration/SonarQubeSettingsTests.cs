@@ -17,6 +17,7 @@ public class SonarQubeSettingsTests
 
         settings.BaseUrl.Should().BeEmpty();
         settings.Token.Should().BeEmpty();
+        settings.Organization.Should().BeEmpty();
     }
 
     [Fact]
@@ -25,10 +26,12 @@ public class SonarQubeSettingsTests
         var settings = new SonarQubeSettings
         {
             BaseUrl = "https://sonarqube.example.com",
-            Token = "test-token"
+            Token = "test-token",
+            Organization = "test-org"
         };
 
         settings.BaseUrl.Should().Be("https://sonarqube.example.com");
         settings.Token.Should().Be("test-token");
+        settings.Organization.Should().Be("test-org");
     }
 }

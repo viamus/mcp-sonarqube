@@ -12,6 +12,7 @@ services:
       - ServerSecurity__RequireApiKey=${SERVER_REQUIRE_API_KEY:-false}
       - SonarQube__BaseUrl=${SONARQUBE_BASE_URL}
       - SonarQube__Token=${SONARQUBE_TOKEN}
+      - SonarQube__Organization=${SONARQUBE_ORGANIZATION:-}
     env_file:
       - .env
     healthcheck:

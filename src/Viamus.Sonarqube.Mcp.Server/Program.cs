@@ -9,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 // Configure settings
 builder.Services.Configure<ServerSecuritySettings>(
     builder.Configuration.GetSection(ServerSecuritySettings.SectionName));
+builder.Services.Configure<SonarQubeSettings>(
+    builder.Configuration.GetSection(SonarQubeSettings.SectionName));
 
 var sonarQubeSettings = builder.Configuration
     .GetSection(SonarQubeSettings.SectionName)

@@ -1,10 +1,14 @@
 using System.Net.Http.Json;
+using Microsoft.Extensions.Options;
+using Viamus.Sonarqube.Mcp.Server.Configuration;
 using Viamus.Sonarqube.Mcp.Server.Models;
 
 namespace Viamus.Sonarqube.Mcp.Server.Services;
 
-public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
+public class SonarQubeClient(HttpClient httpClient, IOptions<SonarQubeSettings>? settings = null) : ISonarQubeClient
 {
+    private readonly string? organization = NormalizeOrganization(settings?.Value.Organization);
+
     public async Task<ProjectSearchResponse> SearchProjectsAsync(
         string? query, int? page, int? pageSize, CancellationToken cancellationToken)
     {
@@ -44,7 +48,9 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
     public async Task<QualityGateProjectStatusResponse> GetQualityGateProjectStatusAsync(
         string projectKey, CancellationToken cancellationToken)
     {
-        var url = BuildUrl("/api/qualitygates/project_status", [$"projectKey={Uri.EscapeDataString(projectKey)}"]);
+        var parameters = new List<string> { $"projectKey={Uri.EscapeDataString(projectKey)}" };
+
+        var url = BuildUrl("/api/qualitygates/project_status", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<QualityGateProjectStatusResponse>(cancellationToken))!;
@@ -141,7 +147,9 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
     public async Task<HotspotDetailResponse> GetHotspotAsync(
         string hotspotKey, CancellationToken cancellationToken)
     {
-        var url = BuildUrl("/api/hotspots/show", [$"hotspot={Uri.EscapeDataString(hotspotKey)}"]);
+        var parameters = new List<string> { $"hotspot={Uri.EscapeDataString(hotspotKey)}" };
+
+        var url = BuildUrl("/api/hotspots/show", parameters);
         var response = await httpClient.GetAsync(url, cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<HotspotDetailResponse>(cancellationToken))!;
@@ -149,7 +157,9 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
 
     public async Task<QualityGateListResponse> ListQualityGatesAsync(CancellationToken cancellationToken)
     {
-        var response = await httpClient.GetAsync("/api/qualitygates/list", cancellationToken);
+        var parameters = new List<string>();
+
+        var response = await httpClient.GetAsync(BuildUrl("/api/qualitygates/list", parameters), cancellationToken);
         await EnsureSuccessOrThrowAsync(response, cancellationToken);
         return (await response.Content.ReadFromJsonAsync<QualityGateListResponse>(cancellationToken))!;
     }
@@ -190,10 +200,29 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
             ? "new_coverage,new_duplicated_lines_density,new_duplicated_lines,new_duplicated_blocks,new_bugs,new_vulnerabilities,new_code_smells,new_security_hotspots,new_lines,new_lines_to_cover,new_violations"
             : metricKeys;
 
-        var qualityGateUrl = $"/api/qualitygates/project_status?projectKey={encodedKey}&pullRequest={encodedPr}";
-        var measuresUrl = $"/api/measures/component?component={encodedKey}&pullRequest={encodedPr}&metricKeys={Uri.EscapeDataString(metrics)}";
-        var issuesUrl = $"/api/issues/search?projects={encodedKey}&pullRequest={encodedPr}&ps=500";
-        var hotspotsUrl = $"/api/hotspots/search?projectKey={encodedKey}&pullRequest={encodedPr}&ps=500";
+        var qualityGateUrl = BuildUrl("/api/qualitygates/project_status", new List<string>
+        {
+            $"projectKey={encodedKey}",
+            $"pullRequest={encodedPr}"
+        });
+        var measuresUrl = BuildUrl("/api/measures/component", new List<string>
+        {
+            $"component={encodedKey}",
+            $"pullRequest={encodedPr}",
+            $"metricKeys={Uri.EscapeDataString(metrics)}"
+        });
+        var issuesUrl = BuildUrl("/api/issues/search", new List<string>
+        {
+            $"projects={encodedKey}",
+            $"pullRequest={encodedPr}",
+            "ps=500"
+        });
+        var hotspotsUrl = BuildUrl("/api/hotspots/search", new List<string>
+        {
+            $"projectKey={encodedKey}",
+            $"pullRequest={encodedPr}",
+            "ps=500"
+        });
 
         var qualityGateTask = httpClient.GetAsync(qualityGateUrl, cancellationToken);
         var measuresTask = httpClient.GetAsync(measuresUrl, cancellationToken);
@@ -231,10 +260,19 @@ public class SonarQubeClient(HttpClient httpClient) : ISonarQubeClient
             hotspots);
     }
 
-    private static string BuildUrl(string path, List<string> parameters)
+    private string BuildUrl(string path, List<string> parameters)
     {
-        return parameters.Count > 0 ? $"{path}?{string.Join("&", parameters)}" : path;
+        var queryParameters = new List<string>(parameters);
+        if (organization is not null)
+        {
+            queryParameters.Add($"organization={Uri.EscapeDataString(organization)}");
+        }
+
+        return queryParameters.Count > 0 ? $"{path}?{string.Join("&", queryParameters)}" : path;
     }
+
+    private static string? NormalizeOrganization(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static async Task EnsureSuccessOrThrowAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
