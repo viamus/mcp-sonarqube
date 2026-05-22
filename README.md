@@ -180,6 +180,7 @@ Is my SonarQube instance healthy?
 |----------|----------|-------------|
 | `SONARQUBE_BASE_URL` | Yes | SonarQube instance URL |
 | `SONARQUBE_TOKEN` | Yes | SonarQube user token |
+| `SONARQUBE_ORGANIZATION` | No | SonarCloud organization key |
 | `SERVER_REQUIRE_API_KEY` | No | Enable API key authentication (default: `false`) |
 | `SERVER_API_KEY` | No | API key for server access |
 
@@ -189,7 +190,8 @@ Is my SonarQube instance healthy?
 {
   "SonarQube": {
     "BaseUrl": "https://your-sonarqube-instance.com",
-    "Token": "your-token-here"
+    "Token": "your-token-here",
+    "Organization": ""
   },
   "ServerSecurity": {
     "RequireApiKey": false,
@@ -204,6 +206,7 @@ Is my SonarQube instance healthy?
 cd src/Viamus.Sonarqube.Mcp.Server
 dotnet user-secrets set "SonarQube:BaseUrl" "https://your-sonarqube-instance.com"
 dotnet user-secrets set "SonarQube:Token" "your-token-here"
+dotnet user-secrets set "SonarQube:Organization" "your-sonarcloud-organization"
 ```
 
 ---
